@@ -113,8 +113,8 @@ class ROSBebop:
         self.battery_pub.publish(self.drone.battery)
     def publish_pose(self):
         pose = Pose()
-        pose.position.x = self.drone.position[1]
-        pose.position.y = self.drone.position[0]
+        pose.position.x = self.drone.position[0]
+        pose.position.y = -self.drone.position[1]
         pose.position.z = -self.drone.position[2]
         quat = tf.transformations.quaternion_from_euler(self.drone.roll,self.drone.pitch,-self.drone.yaw)
         pose.orientation.x = quat[0]
@@ -136,7 +136,7 @@ class ROSBebop:
            gps_data.header.frame_id = self.unique_id
            self.gps_pub.publish(gps_data)
     def publish_speed(self):
-        self.speed_pub.publish(Vector3(self.drone.speed[1],self.drone.speed[0],-self.drone.speed[2]))
+        self.speed_pub.publish(Vector3(self.drone.speed[0],-self.drone.speed[1],-self.drone.speed[2]))
     def videoCallback(self, frame, robot=None, debug=False):
         if self.improc_thread is None:
             self.queue = Queue.Queue()
