@@ -1,62 +1,66 @@
 #!/usr/bin/python
 from bebop import *
-#import navdata
 import rospy
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import Empty, Float64, Int64
-from geometry_msgs.msg import Twist, Vector3
-from sensor_msgs.msg import Image
-import cvideo
-import numpy
-import cv2
+from geometry_msgs.msg import Twist, Vector3, Pose
+from sensor_msgs.msg import Image, NavSatFix
+import cvideo,tf,numpy,cv2
 #from multiprocessing import Process, Queue
 import threading
 import Queue
 import sys
 import signal
 import time
+
 running = False
 def signal_handler(signal,frame):
     global running
-    print "Triggered"
+    print "Quit Triggered"
     running = False
 class ROSBebop:
-    def __init__(self, machinename='drone1', ip='192.168.42.1', navdata_port = 43210,port=44444):
-        self.thread = None
-        self.moveSub = rospy.Subscriber('/'+machinename+'/cmd_vel', Twist, self.moveCallback)
-        self.takeoffSub = rospy.Subscriber('/'+machinename+'/takeoff', Empty, self.takeoffCallback)
-        self.landSub = rospy.Subscriber('/'+machinename+'/land', Empty, self.landCallback)
-        self.panSub = rospy.Subscriber('/'+machinename+'/pan', Int64, self.panCallback)
-        self.tiltSub = rospy.Subscriber('/'+machinename+'/tilt', Int64, self.tiltCallback)
-        self.emergSub = rospy.Subscriber('/'+machinename+'/emergency', Empty, self.emergCallback)
-        self.altitudePub = rospy.Publisher('/'+machinename+'/altitude', Float64, queue_size=10)
-        self.batteryPub = rospy.Publisher('/'+machinename+'/battery', Int64, queue_size=10)
-        self.imagePub = rospy.Publisher('/'+machinename+'/image_raw', Image, queue_size=10)# but not raw
-        #self.imagePub = rospy.Publisher('/'+machinename+'/front/image_raw', Image, queue_size=10)# but not raw
-        self.speedPub = rospy.Publisher('/'+machinename+'/speed', Vector3, queue_size=10)
-        self.positionPub = rospy.Publisher('/'+machinename+'/position', Vector3, queue_size=10)
-        self.anglePub = rospy.Publisher('/'+machinename+'/angle', Vector3, queue_size=10)
-        self.gpsPub = rospy.Publisher('/'+machinename+'/positionGPS', Vector3, queue_size=10)
+    def __init__(self, unique_id, ip, navdata_port):
+        self.improc_thread = None
         self.bridge = CvBridge()
         self.drone = Bebop(ip,navdata_port,onlyIFrames=False)
         self.twist = Twist()
-        self.tilt = 0
+        self.tilt =0
         self.pan = 0
         self.drone.videoCbk = self.videoCallback
         self.drone.videoEnable()
-        self.queueOut = None
-        self.processor= None
         self.queue = None
-        self.machinename = machinename
-        self.ip = ip
-        self.port = port
+        self.unique_id = unique_id
         self.is_emergency = False
+        self.initTopics()
+        self.hovering = True
+    def initTopics(self):
+        self.move_sub = rospy.Subscriber('/'+self.unique_id+'/cmd_vel', Twist, self.moveCallback)
+        self.takeoff_sub = rospy.Subscriber('/'+self.unique_id+'/takeoff', Empty, self.takeoffCallback)
+        self.land_sub = rospy.Subscriber('/'+self.unique_id+'/land', Empty, self.landCallback)
+        self.pan_sub = rospy.Subscriber('/'+self.unique_id+'/pan', Int64, self.panCallback)
+        self.tilt_sub = rospy.Subscriber('/'+self.unique_id+'/tilt', Int64, self.tiltCallback)
+        self.emergency_sub = rospy.Subscriber('/'+self.unique_id+'/emergency', Empty, self.emergCallback)
+        
+        self.altitude_pub = rospy.Publisher('/'+self.unique_id+'/altitude', Float64, queue_size=10)
+        self.battery_pub = rospy.Publisher('/'+self.unique_id+'/battery', Int64, queue_size=10)
+        self.image_pub = rospy.Publisher('/'+self.unique_id+'/image_raw', Image, queue_size=10)
+        self.speed_pub = rospy.Publisher('/'+self.unique_id+'/speed', Vector3, queue_size=10)
+        self.gps_pub = rospy.Publisher('/'+self.unique_id+'/positionGPS', NavSatFix, queue_size=10)
+        self.pose_pub = rospy.Publisher('/'+self.unique_id+'/pose',Pose,queue_size=10)
 
+    def fini(self):
+        self.move_sub.unregister()
+        self.takeoff_sub.unregister()
+        self.land_sub.unregister()
+        self.pan_sub.unregister()
+        self.tilt_sub.unregister()
+        self.emergency_sub.unregister()
+        rospy.signal_shutdown("shutdown")
     def loop(self):
         global running
         r = rospy.Rate(40)
         self.drone.update(cmd=trimCmd())
-        self.publish()
+        self.publish_all()
         while running:
             if self.is_emergency:
                 print "emergency!"
@@ -65,64 +69,85 @@ class ROSBebop:
                 continue
             r.sleep()
             try:
-                if (self.twist.linear.y == 0) and (self.twist.linear.x == 0) and (self.twist.angular.z == 0) and (self.twist.linear.z == 0) :
-                    self.drone.update(cmd=movePCMDCmd(False, 0,0,0,0))
-                else:
-                    self.drone.update(cmd=movePCMDCmd(True,
-                                                      self.twist.linear.y*(-50), #roll
-                                                      self.twist.linear.x*50,    #pitch
-                                                      self.twist.angular.z*(-50),#yaw
-                                                      self.twist.linear.z*50))   #up,down
+                self.drone.update(cmd=movePCMDCmd(not self.hovering,
+                                                  self.twist.linear.y*(-50), #roll
+                                                  self.twist.linear.x*50,    #pitch
+                                                  self.twist.angular.z*(-50),#yaw
+                                                  self.twist.linear.z*50))   #up,down
             except :
                 continue
-            self.publish()
-        rospy.signal_shutdown("shutdown")
+            self.publish_all()
         if self.queue is not None:
             self.queue.put(None)
-            self.thread.join()
+            self.improc_thread.join()
+        self.fini()
     def takeoffCallback(self, msg):
         self.drone.update(cmd=takeoffCmd())
-        self.publish()
+        self.publish_all()
     def landCallback(self, msg):
         self.drone.update(cmd=landCmd())
-        self.publish()
+        self.publish_all()
     def moveCallback(self, msg):
         self.twist = msg
+        self.hovering =  self.twist.linear.y == 0 and self.twist.linear.x == 0 and self.twist.angular.z == 0 and self.twist.linear.z == 0 
     def tiltCallback(self, msg):
         self.tilt = msg.data
         self.drone.update(cmd=moveCameraCmd(tilt=self.tilt, pan=self.pan))
-        self.publish()
+        self.publish_all()
     def panCallback(self, msg):
         self.pan = msg.data
         self.drone.update(cmd=moveCameraCmd(tilt=self.tilt, pan=self.pan))
-        self.publish()
+        self.publish_all()
     def emergCallback(self, msg):
         print "emergency called"
         self.is_emergency = True
-        self.moveSub.unregister()
-        self.takeoffSub.unregister()
-        self.landSub.unregister()
-        self.panSub.unregister()
-        self.tiltSub.unregister()
-        self.emergSub.unregister()
-    def publish(self):
-        self.altitudePub.publish(self.drone.altitude)
-        self.batteryPub.publish(self.drone.battery)
-        self.positionPub.publish(Vector3(self.drone.position[0],self.drone.position[1],self.drone.position[2]))
-        self.speedPub.publish(Vector3(self.drone.speed[0],self.drone.speed[1],self.drone.speed[2]))
-        self.anglePub.publish(Vector3(self.drone.roll,self.drone.pitch,self.drone.yaw))
-        if self.drone.positionGPS != None:
-            self.gpsPub.publish(Vector3(self.drone.positionGPS[0], self.drone.positionGPS[1], self.drone.positionGPS[2]))
+    def publish_all(self):
+        self.publish_altitude()
+        self.publish_battery()
+        self.publish_pose()
+        self.publish_gps()
+        self.publish_speed()
+    def publish_altitude(self):
+        self.altitude_pub.publish(self.drone.altitude)
+    def publish_battery(self):
+        self.battery_pub.publish(self.drone.battery)
+    def publish_pose(self):
+        pose = Pose()
+        pose.position.x = self.drone.position[0]
+        pose.position.y = -self.drone.position[1]
+        pose.position.z = -self.drone.position[2]
+        quat = tf.transformations.quaternion_from_euler(self.drone.roll,self.drone.pitch,-self.drone.yaw)
+        pose.orientation.x = quat[0]
+        pose.orientation.y = quat[1]
+        pose.orientation.z = quat[2]
+        pose.orientation.w = quat[3]
+        self.pose_pub.publish(pose)
+        print "roll:"+str(self.drone.roll)# for debug
+        print "pitch:"+str(self.drone.pitch)
+        print "yaw:"+str(-self.drone.yaw)
+        print "---"
+        
+    def publish_gps(self):
+        if self.drone.positionGPS!=None:
+           gps_data = NavSatFix()
+           gps_data.latitude = self.drone.positionGPS[0]
+           gps_data.longitude = self.drone.positionGPS[1]#maybe reversed?
+           gps_data.altitude = self.drone.positionGPS[2]
+           gps_data.header.frame_id = self.unique_id
+           self.gps_pub.publish(gps_data)
+    def publish_speed(self):
+        self.speed_pub.publish(Vector3(self.drone.speed[0],-self.drone.speed[1],-self.drone.speed[2]))
     def videoCallback(self, frame, robot=None, debug=False):
-        if self.thread is None:
+        if self.improc_thread is None:
             self.queue = Queue.Queue()
-            self.thread = threading.Thread(target=self.imageProcess, name="image publisher", args=(self.queue,))
-            self.thread.start()
+            self.improc_thread = threading.Thread(target=self.imageProcess, name="image publisher", args=(self.queue,))
+            self.improc_thread.start()
         self.queue.put(frame)
     def imageProcess(self,queue):
+        global running
         cvideo.init()
         img = numpy.zeros([360, 640, 3], dtype=numpy.uint8)
-        while not rospy.is_shutdown():
+        while running:
             frame = queue.get()
             if frame is None:
                 break
@@ -130,7 +155,7 @@ class ROSBebop:
             if not ret:
                 continue
             assert ret
-            self.imagePub.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
+            self.image_pub.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
 
 
 def main(name ,ip, navdata):
@@ -139,7 +164,7 @@ def main(name ,ip, navdata):
     rosbebop = ROSBebop(name,ip,navdata)
     rosbebop.loop()
 if __name__ == "__main__":
-    rospy.init_node(sys.argv[1]+'_controller', anonymous=True,disable_signals=True)    
+    rospy.init_node(sys.argv[1]+'_driver', anonymous=True,disable_signals=True)    
     driver_thread = threading.Thread(target=main,args=(sys.argv[1],sys.argv[2],int(sys.argv[3])))
     signal.signal(signal.SIGINT,signal_handler)
     driver_thread.start()
