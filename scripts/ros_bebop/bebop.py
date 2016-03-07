@@ -158,7 +158,7 @@ class Bebop:
         if dt: # for compatibility with older log files
             self.update( cmd=setDateCmd( date=dt.date() ) )
             self.update( cmd=setTimeCmd( time=dt.time() ) )
-        for cmd in setSpeedSettingsCmdList( maxVerticalSpeed=1.0, maxRotationSpeed=90.0, 
+        for cmd in setSpeedSettingsCmdList( maxVerticalSpeed=11.1, maxRotationSpeed=60.0, 
                 hullProtection=True, outdoor=True ):
             self.update( cmd=cmd )
         self.update( cmd=requestAllStatesCmd() )

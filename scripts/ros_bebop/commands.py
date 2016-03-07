@@ -33,7 +33,6 @@ def trimCmd():
     # ARCOMMANDS_ID_ARDRONE3_PILOTING_CMD_FLATTRIM = 0,
     return struct.pack("BBH", 1, 0, 0)
 
-
 def movePCMDCmd( active, roll, pitch, yaw, gaz ):
     # ARCOMMANDS_ID_PROJECT_ARDRONE3 = 1,
     # ARCOMMANDS_ID_ARDRONE3_CLASS_PILOTING = 0,
@@ -66,7 +65,7 @@ def takePictureCmd():
 
 def videoRecordingCmd( on=True ):
     # ARCOMMANDS_ID_PROJECT_ARDRONE3 = 1,
-    # ARCOMMANDS_ID_ARDRONE3_CLASS_MEDIARECORD = 7,
+    # ARCOMMANDS_ID_ARDRONE3_CLASS_MEDIARECORD 19= 7,
     # ARCOMMANDS_ID_ARDRONE3_MEDIARECORD_CMD_VIDEO = 1
     massStorageId = 0 # internal ??
     if on:
@@ -130,6 +129,11 @@ def moveCameraCmd( tilt, pan ):
     # ARCOMMANDS_ID_ARDRONE3_CAMERA_CMD_ORIENTATION = 0,
     return struct.pack("BBHbb", 1, 1, 0, tilt, pan)
 
+def maxAltitudeCmd(maxAltitude):
+    # ARCOMMANDS_ID_PROJECT_ARDRONE3 = 1
+    # ARCOMMANDS_ID_ARDRONE3_CLASS_PILOTINGSETTINGS = 2
+    # ARCOMMANDS_ID_ARDRONE3_PILOTTINGSETTINGS_MAXALTITUDE
+    return struct.pack("BBHf",1,2,0,maxAltitude)
 
 def resetHomeCmd():
     # ARCOMMANDS_ID_PROJECT_ARDRONE3 = 1

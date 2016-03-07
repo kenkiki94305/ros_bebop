@@ -60,6 +60,7 @@ class ROSBebop:
         global running
         r = rospy.Rate(40)
         self.drone.update(cmd=trimCmd())
+        self.setMaxAltitude(1.5)
         self.publish_all()
         while running:
             if self.is_emergency:
@@ -87,6 +88,8 @@ class ROSBebop:
     def landCallback(self, msg):
         self.drone.update(cmd=landCmd())
         self.publish_all()
+    def setMaxAltitude(self,maxAltitude):
+        self.drone.update(cmd=maxAltitudeCmd(maxAltitude))
     def moveCallback(self, msg):
         self.twist = msg
         self.hovering =  self.twist.linear.y == 0 and self.twist.linear.x == 0 and self.twist.angular.z == 0 and self.twist.linear.z == 0 
@@ -122,10 +125,10 @@ class ROSBebop:
         pose.orientation.z = quat[2]
         pose.orientation.w = quat[3]
         self.pose_pub.publish(pose)
-        print "roll:"+str(self.drone.roll)# for debug
-        print "pitch:"+str(self.drone.pitch)
-        print "yaw:"+str(-self.drone.yaw)
-        print "---"
+#        print "roll:"+str(self.drone.roll)# for debug
+#        print "pitch:"+str(self.drone.pitch)
+#        print "yaw:"+str(-self.drone.yaw)
+#        print "---"
         
     def publish_gps(self):
         if self.drone.positionGPS!=None:
