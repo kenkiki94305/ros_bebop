@@ -75,8 +75,8 @@ def parseData( data, robot, verbose=False ):
                 # ARCOMMANDS_ID_COMMON_CLASS_COMMONSTATE = 5,
                 # ARCOMMANDS_ID_COMMON_COMMONSTATE_CMD_WIFISIGNALCHANGED = 7,
                 rssi = struct.unpack("h", data[7:7+2])[0] # RSSI of the signal between controller and the product (in dbm)
-#                if verbose:
-                print "Wifi", rssi
+                if verbose:
+                    print "Wifi", rssi
             else:
                 printHex( data[:frameSize] )
         elif commandProject == 1:

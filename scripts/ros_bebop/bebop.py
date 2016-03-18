@@ -27,7 +27,7 @@ DISCOVERY_PORT = 44444
 COMMAND_PORT = 54321# c2d_port
 
 class Bebop:
-    def __init__( self, host,navdata_port,metalog=None, onlyIFrames=True):
+    def __init__( self, host,navdata_port,speed_limits, metalog=None, onlyIFrames=True):
         self.host = host
         self.navdata_port = navdata_port
         if metalog is None:
@@ -61,7 +61,7 @@ class Bebop:
         self.cameraTilt, self.cameraPan = 0,0
         self.lastImageResult = None
         self.navigateHomeState = None
-        self.config()
+        self.config(speed_limits[0],speed_limits[1])#speed_limits[0] is linear velocity limit, speed_limits[1] is angular velocity limit
         self.commandSender.start()
         
         # takahashi added
@@ -152,13 +152,13 @@ class Bebop:
         
 
 
-    def config( self ):
+    def config( self ,linear_limit, angular_limit):
         # initial cfg
         dt = self.metalog.now()
         if dt: # for compatibility with older log files
             self.update( cmd=setDateCmd( date=dt.date() ) )
             self.update( cmd=setTimeCmd( time=dt.time() ) )
-        for cmd in setSpeedSettingsCmdList( maxVerticalSpeed=11.1, maxRotationSpeed=60.0, 
+        for cmd in setSpeedSettingsCmdList( maxVerticalSpeed=linear_limit, maxRotationSpeed=angular_limit, 
                 hullProtection=True, outdoor=True ):
             self.update( cmd=cmd )
         self.update( cmd=requestAllStatesCmd() )
@@ -198,9 +198,6 @@ class Bebop:
             print i,
             self.update( cmd=None )
         print
-
-    def hover( self ):
-        self.update( cmd=movePCMDCmd( active=True, roll=0, pitch=0, yaw=0, gaz=0 ) )
 
     def emergency( self ):
         self.update( cmd=emergencyCmd() )

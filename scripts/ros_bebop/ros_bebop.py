@@ -19,17 +19,21 @@ def signal_handler(signal,frame):
     print "Quit Triggered"
     running = False
 class ROSBebop:
-    def __init__(self, unique_id, ip, navdata_port):
+    def __init__(self):
+        self.unique_id = rospy.get_param('~unique_id','bebop_1')
+        ip = rospy.get_param('~host_address','192.168.11.142')
+        navdata_port = rospy.get_param('~port',22222)
+        speed_limits = (rospy.get_param('~linear_speed_limit',11.1),rospy.get_param('~angular_speed_limit',60.0))
         self.improc_thread = None
         self.bridge = CvBridge()
-        self.drone = Bebop(ip,navdata_port,onlyIFrames=False)
+        print speed_limits
+        self.drone = Bebop(ip,navdata_port,speed_limits,onlyIFrames=False)
         self.twist = Twist()
         self.tilt =0
         self.pan = 0
         self.drone.videoCbk = self.videoCallback
         self.drone.videoEnable()
         self.queue = None
-        self.unique_id = unique_id
         self.is_emergency = False
         self.initTopics()
         self.hovering = True
@@ -161,14 +165,14 @@ class ROSBebop:
             self.image_pub.publish(self.bridge.cv2_to_imgmsg(img, "bgr8"))
 
 
-def main(name ,ip, navdata):
+def main():
     global running
     running = True
-    rosbebop = ROSBebop(name,ip,navdata)
+    rosbebop = ROSBebop()
     rosbebop.loop()
 if __name__ == "__main__":
-    rospy.init_node(sys.argv[1]+'_driver', anonymous=True,disable_signals=True)    
-    driver_thread = threading.Thread(target=main,args=(sys.argv[1],sys.argv[2],int(sys.argv[3])))
+    rospy.init_node('bebop_driver', anonymous=True,disable_signals=True)    
+    driver_thread = threading.Thread(target=main)
     signal.signal(signal.SIGINT,signal_handler)
     driver_thread.start()
     while driver_thread.isAlive():
