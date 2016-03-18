@@ -24,6 +24,7 @@ class ROSBebop:
         ip = rospy.get_param('~host_address','192.168.11.142')
         navdata_port = rospy.get_param('~port',22222)
         speed_limits = (rospy.get_param('~linear_speed_limit',11.1),rospy.get_param('~angular_speed_limit',60.0))
+        self.max_altitude = rospy.get_param('~altitude_limit',5.0)
         self.improc_thread = None
         self.bridge = CvBridge()
         print speed_limits
@@ -64,7 +65,7 @@ class ROSBebop:
         global running
         r = rospy.Rate(40)
         self.drone.update(cmd=trimCmd())
-        self.setMaxAltitude(1.5)
+        self.setMaxAltitude()
         self.publish_all()
         while running:
             if self.is_emergency:
@@ -92,8 +93,8 @@ class ROSBebop:
     def landCallback(self, msg):
         self.drone.update(cmd=landCmd())
         self.publish_all()
-    def setMaxAltitude(self,maxAltitude):
-        self.drone.update(cmd=maxAltitudeCmd(maxAltitude))
+    def setMaxAltitude(self):
+        self.drone.update(cmd=maxAltitudeCmd(self.max_altitude))
     def moveCallback(self, msg):
         self.twist = msg
         self.hovering =  self.twist.linear.y == 0 and self.twist.linear.x == 0 and self.twist.angular.z == 0 and self.twist.linear.z == 0 
