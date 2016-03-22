@@ -13,6 +13,8 @@ class LoggedSocket:
         else:
             self.logf = open( logFilename,"wb" )
         self.soc = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.soc.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        self.soc.settimeout(1.0)
     def __del__(self):
         self.soc.close()
 
@@ -21,7 +23,10 @@ class LoggedSocket:
 
     def recv( self, bufSize ):
         # TODO socket.timeout
-        data = self.soc.recv( bufSize )
+        try:
+            data = self.soc.recv( bufSize )
+        except socket.timeout:
+            print "time out"
         if len(data) > 0:
             self.logf.write(data)
             self.logf.flush()

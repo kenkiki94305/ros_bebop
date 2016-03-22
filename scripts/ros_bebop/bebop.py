@@ -72,8 +72,24 @@ class Bebop:
     def _discovery( self ):
         "start communication with the robot"
         filename = "tmp.bin" # TODO combination outDir + date/time
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
-        s.connect( (self.host, DISCOVERY_PORT) )
+        while True:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # TCP
+                s.settimeout(5)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                print "connecting..."
+                s.connect( (self.host, DISCOVERY_PORT) )
+                break
+            except KeyboardInterrupt as e:
+                print "keyboard interrupt"
+                sys.exit(1)
+            except socket.error as e:
+                print e
+                s.close()
+                print "retry after 3 secs"
+                time.sleep(3)
+        print "connected"
+        
         s.send( '{"controller_type":"computer", "controller_name":"katarina", "d2c_port":"'+str(self.navdata_port)+'"}' )
         f = open( filename, "wb" )
         while True:
@@ -97,7 +113,6 @@ class Bebop:
 
         # send even None, to sync in/out queues
         self.commandSender.send( cmd )
-
         while len(self.buf) == 0:
             data = self.navdata.recv(40960)
             self.buf += data

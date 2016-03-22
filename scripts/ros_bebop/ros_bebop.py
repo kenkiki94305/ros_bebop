@@ -14,20 +14,21 @@ import signal
 import time
 
 running = False
+need_to_quit = False
 def signal_handler(signal,frame):
     global running
     print "Quit Triggered"
     running = False
+    need_to_quit = True
 class ROSBebop:
     def __init__(self):
         self.unique_id = rospy.get_param('~unique_id','bebop_1')
-        ip = rospy.get_param('~host_address','192.168.11.142')
+        ip = rospy.get_param('~host_address','192.168.42.1')
         navdata_port = rospy.get_param('~port',22222)
         speed_limits = (rospy.get_param('~linear_speed_limit',11.1),rospy.get_param('~angular_speed_limit',60.0))
         self.max_altitude = rospy.get_param('~altitude_limit',5.0)
         self.improc_thread = None
         self.bridge = CvBridge()
-        print speed_limits
         self.drone = Bebop(ip,navdata_port,speed_limits,onlyIFrames=False)
         self.twist = Twist()
         self.tilt =0
@@ -60,28 +61,31 @@ class ROSBebop:
         self.pan_sub.unregister()
         self.tilt_sub.unregister()
         self.emergency_sub.unregister()
-        rospy.signal_shutdown("shutdown")
     def loop(self):
-        global running
-        r = rospy.Rate(40)
+        global running,need_to_quit
         self.drone.update(cmd=trimCmd())
         self.setMaxAltitude()
         self.publish_all()
+        running = True
         while running:
             if self.is_emergency:
                 print "emergency!"
                 self.drone.update(cmd=landCmd())
                 self.drone.update(cmd=emergencyCmd())
                 continue
-            r.sleep()
             try:
+                time.sleep(0.025)
                 self.drone.update(cmd=movePCMDCmd(not self.hovering,
                                                   self.twist.linear.y*(-50), #roll
                                                   self.twist.linear.x*50,    #pitch
                                                   self.twist.angular.z*(-50),#yaw
                                                   self.twist.linear.z*50))   #up,down
-            except :
-                continue
+            except KeyboardInterrupt:
+                running = False
+                need_to_quit = True
+            except:
+                running = False
+                need_to_quit = False                
             self.publish_all()
         if self.queue is not None:
             self.queue.put(None)
@@ -146,7 +150,7 @@ class ROSBebop:
     def publish_speed(self):
         self.speed_pub.publish(Vector3(self.drone.speed[0],-self.drone.speed[1],-self.drone.speed[2]))
     def videoCallback(self, frame, robot=None, debug=False):
-        if self.improc_thread is None:
+        if self.improc_thread == None:
             self.queue = Queue.Queue()
             self.improc_thread = threading.Thread(target=self.imageProcess, name="image publisher", args=(self.queue,))
             self.improc_thread.start()
@@ -157,7 +161,7 @@ class ROSBebop:
         img = numpy.zeros([360, 640, 3], dtype=numpy.uint8)
         while running:
             frame = queue.get()
-            if frame is None:
+            if frame == None:
                 break
             ret = cvideo.frame(img, frame[1], frame[2])
             if not ret:
@@ -167,17 +171,15 @@ class ROSBebop:
 
 
 def main():
-    global running
-    running = True
-    rosbebop = ROSBebop()
-    rosbebop.loop()
+    global need_to_quit
+    need_to_quit = False
+    while not need_to_quit:
+        rosbebop = ROSBebop()
+        rosbebop.loop()
+    rospy.signal_shutdown("shutdown")
 if __name__ == "__main__":
     rospy.init_node('bebop_driver', anonymous=True,disable_signals=True)    
-    driver_thread = threading.Thread(target=main)
+    main()
     signal.signal(signal.SIGINT,signal_handler)
-    driver_thread.start()
-    while driver_thread.isAlive():
-        time.sleep(0.01)
-    driver_thread.join()
 
     
